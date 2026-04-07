@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Windows.Forms;
@@ -50,11 +51,22 @@ namespace KeyboardEmulator
             }
         }
 
+        private List<string> ProcessData(string[] data)
+        {
+            return data
+                .Where(d => !string.IsNullOrWhiteSpace(d))
+                .Select(d => d.Trim().ToUpper())
+                .Distinct()
+                .ToList();
+        }
+
         public void SendViaKeyboard(string[] barcodes, int waitBeforeStartMs = 3000, int delayBetweenKeys = 20, int delayBetweenBarcodes = 50)
         {
             Thread.Sleep(waitBeforeStartMs);
 
-            foreach (var barcode in barcodes)
+            var processedData = ProcessData(barcodes);
+
+            foreach (var barcode in processedData)
             {
                 if (string.IsNullOrWhiteSpace(barcode)) continue;
 
@@ -77,18 +89,12 @@ namespace KeyboardEmulator
 
         public void SendViaWebSocket(string[] data)
         {
-            var cleanedData = new List<string>();
-            foreach(var d in data)
-            {
-                if(!string.IsNullOrWhiteSpace(d)) {
-                    cleanedData.Add(d.Trim());
-                }
-            }
+            var processedData = ProcessData(data);
 
             var payload = new
             {
                 type = "rfid_bulk",
-                data = cleanedData
+                data = processedData
             };
             
             string json = JsonSerializer.Serialize(payload);

@@ -15,6 +15,7 @@ namespace ScannerApp
         private Label lblWsStatus;
         private NumericUpDown numDelay;
         private NumericUpDown numDelayBarcode;
+        private NumericUpDown numReadDuration;
         
         private DeviceIntegrationManager _deviceManager;
 
@@ -34,23 +35,47 @@ namespace ScannerApp
                     this.Invoke((MethodInvoker)delegate {
                         LogMessage($"[WS Client] {message}");
                         
-                        if (message.Contains("READ_RFID_KEYBOARD"))
+                        string action = "";
+                        int timeout = (int)numReadDuration.Value;
+
+                        try {
+                            using (var doc = System.Text.Json.JsonDocument.Parse(message))
+                            {
+                                if (doc.RootElement.TryGetProperty("action", out var actElem))
+                                    action = actElem.GetString() ?? "";
+                                if (doc.RootElement.TryGetProperty("duration", out var durElem) && durElem.ValueKind == System.Text.Json.JsonValueKind.Number)
+                                    timeout = durElem.GetInt32();
+                            }
+                        } catch { 
+                            if (message.Contains("READ_RFID_KEYBOARD")) action = "READ_RFID_KEYBOARD";
+                            else if (message.Contains("READ_RFID")) action = "READ_RFID";
+                        }
+
+                        if (action == "READ_RFID_KEYBOARD")
                         {
-                            LogMessage(">> Odoo triggered RFID read (KEYBOARD).");
+                            LogMessage($">> Odoo triggered RFID read (KEYBOARD). Reading for {timeout}ms...");
                             string[] lines = txtBarcodes.Lines;
                             int charDelay = (int)numDelay.Value;
                             int barDelay = (int)numDelayBarcode.Value;
                             
-                            System.Threading.Tasks.Task.Run(() => 
+                            System.Threading.Tasks.Task.Run(async () => 
                             {
-                                _deviceManager.SendViaKeyboard(lines, 1000, charDelay, barDelay);
+                                await System.Threading.Tasks.Task.Delay(timeout);
+                                _deviceManager.SendViaKeyboard(lines, 0, charDelay, barDelay);
                             });
                         }
-                        else if (message.Contains("READ_RFID"))
+                        else if (action == "READ_RFID")
                         {
-                            LogMessage(">> Odoo triggered RFID read (WS).");
-                            _deviceManager.SendViaWebSocket(txtBarcodes.Lines);
-                            LogMessage(">> Sent RFID array to Odoo instantly.");
+                            LogMessage($">> Odoo triggered RFID read (WS). Reading for {timeout}ms...");
+                            string[] lines = txtBarcodes.Lines;
+                            System.Threading.Tasks.Task.Run(async () => 
+                            {
+                                await System.Threading.Tasks.Task.Delay(timeout);
+                                this.Invoke((MethodInvoker)delegate {
+                                    _deviceManager.SendViaWebSocket(lines);
+                                    LogMessage(">> Sent RFID array to Odoo instantly.");
+                                });
+                            });
                         }
                     });
                 });
@@ -87,12 +112,15 @@ namespace ScannerApp
             this.lblWsStatus = new Label();
             this.numDelay = new NumericUpDown();
             this.numDelayBarcode = new NumericUpDown();
+            this.numReadDuration = new NumericUpDown();
             
             Label lbl1 = new Label() { Text = "Delay char (ms):", AutoSize = true, Location = new Point(12, 180) };
             Label lbl2 = new Label() { Text = "Delay bar (ms):", AutoSize = true, Location = new Point(200, 180) };
+            Label lbl3 = new Label() { Text = "RFID Read Time (ms):", AutoSize = true, Location = new Point(12, 213) };
             
             ((System.ComponentModel.ISupportInitialize)(this.numDelay)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.numDelayBarcode)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.numReadDuration)).BeginInit();
             this.SuspendLayout();
 
             this.lblWsStatus.AutoSize = true;
@@ -112,20 +140,25 @@ namespace ScannerApp
             this.numDelayBarcode.Size = new Size(60, 23);
             this.numDelayBarcode.Value = 50;
 
+            this.numReadDuration.Location = new Point(140, 210);
+            this.numReadDuration.Size = new Size(80, 23);
+            this.numReadDuration.Value = 1000;
+            this.numReadDuration.Maximum = 60000;
+
             // btnSimulateKeyboard
-            this.btnSimulateKeyboard.Location = new Point(12, 210);
+            this.btnSimulateKeyboard.Location = new Point(12, 240);
             this.btnSimulateKeyboard.Size = new Size(190, 40);
             this.btnSimulateKeyboard.Text = "Send via Keyboard (3s wait)";
             this.btnSimulateKeyboard.Click += btnSimulateKeyboard_Click;
 
             // btnSimulateWebSocket
-            this.btnSimulateWebSocket.Location = new Point(222, 210);
+            this.btnSimulateWebSocket.Location = new Point(222, 240);
             this.btnSimulateWebSocket.Size = new Size(190, 40);
             this.btnSimulateWebSocket.Text = "Send via WebSocket (Instant)";
             this.btnSimulateWebSocket.Click += btnSimulateWebSocket_Click;
 
             // txtLog
-            this.txtLog.Location = new Point(12, 260);
+            this.txtLog.Location = new Point(12, 290);
             this.txtLog.Multiline = true;
             this.txtLog.ScrollBars = ScrollBars.Vertical;
             this.txtLog.ReadOnly = true;
@@ -133,16 +166,18 @@ namespace ScannerApp
 
             // lblStatus
             this.lblStatus.AutoSize = true;
-            this.lblStatus.Location = new Point(12, 390);
+            this.lblStatus.Location = new Point(12, 420);
             this.lblStatus.Text = "Ready.";
 
             // Form1
-            this.ClientSize = new Size(424, 420);
+            this.ClientSize = new Size(424, 450);
             this.Controls.Add(lbl1);
             this.Controls.Add(lbl2);
+            this.Controls.Add(lbl3);
             this.Controls.Add(this.lblWsStatus);
             this.Controls.Add(this.numDelay);
             this.Controls.Add(this.numDelayBarcode);
+            this.Controls.Add(this.numReadDuration);
             this.Controls.Add(this.txtLog);
             this.Controls.Add(this.lblStatus);
             this.Controls.Add(this.btnSimulateKeyboard);
@@ -152,6 +187,7 @@ namespace ScannerApp
             
             ((System.ComponentModel.ISupportInitialize)(this.numDelay)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numDelayBarcode)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.numReadDuration)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
         }
