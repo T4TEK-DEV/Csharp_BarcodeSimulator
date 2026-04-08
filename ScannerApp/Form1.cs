@@ -9,14 +9,12 @@ namespace ScannerApp
     {
         private TextBox txtBarcodes;
         private TextBox txtLog;
+        private TextBox txtDelimiter;
         private Button btnSimulateKeyboard;
         private Button btnSimulateWebSocket;
         private Label lblStatus;
         private Label lblWsStatus;
-        private NumericUpDown numDelay;
-        private NumericUpDown numDelayBarcode;
-        private NumericUpDown numReadDuration;
-        
+
         private DeviceIntegrationManager _deviceManager;
 
         public Form1()
@@ -28,15 +26,15 @@ namespace ScannerApp
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            
-            try 
+
+            try
             {
                 _deviceManager.StartServer(8181, message => {
                     this.Invoke((MethodInvoker)delegate {
                         LogMessage($"[WS Client] {message}");
-                        
+
                         string action = "";
-                        int timeout = (int)numReadDuration.Value;
+                        int timeout = 1000;
 
                         try {
                             using (var doc = System.Text.Json.JsonDocument.Parse(message))
@@ -46,29 +44,32 @@ namespace ScannerApp
                                 if (doc.RootElement.TryGetProperty("duration", out var durElem) && durElem.ValueKind == System.Text.Json.JsonValueKind.Number)
                                     timeout = durElem.GetInt32();
                             }
-                        } catch { 
+                        } catch {
                             if (message.Contains("READ_RFID_KEYBOARD")) action = "READ_RFID_KEYBOARD";
                             else if (message.Contains("READ_RFID")) action = "READ_RFID";
                         }
 
                         if (action == "READ_RFID_KEYBOARD")
                         {
-                            LogMessage($">> Odoo triggered RFID read (KEYBOARD). Reading for {timeout}ms...");
+                            LogMessage($">> Odoo triggered RFID read (KEYBOARD). Duration={timeout}ms");
                             string[] lines = txtBarcodes.Lines;
-                            int charDelay = (int)numDelay.Value;
-                            int barDelay = (int)numDelayBarcode.Value;
-                            
-                            System.Threading.Tasks.Task.Run(async () => 
+                            string delimiter = txtDelimiter.Text;
+                            int capturedTimeout = timeout;
+
+                            System.Threading.Tasks.Task.Run(async () =>
                             {
-                                await System.Threading.Tasks.Task.Delay(timeout);
-                                _deviceManager.SendViaKeyboard(lines, 0, charDelay, barDelay);
+                                await System.Threading.Tasks.Task.Delay(capturedTimeout);
+                                this.Invoke((MethodInvoker)delegate {
+                                    var (count, elapsed) = _deviceManager.SendViaKeyboard(lines, 0, delimiter);
+                                    LogMessage($">> KB done: {count} barcodes, paste took {elapsed}ms");
+                                });
                             });
                         }
                         else if (action == "READ_RFID")
                         {
-                            LogMessage($">> Odoo triggered RFID read (WS). Reading for {timeout}ms...");
+                            LogMessage($">> Odoo triggered RFID read (WS). Duration={timeout}ms");
                             string[] lines = txtBarcodes.Lines;
-                            System.Threading.Tasks.Task.Run(async () => 
+                            System.Threading.Tasks.Task.Run(async () =>
                             {
                                 await System.Threading.Tasks.Task.Delay(timeout);
                                 this.Invoke((MethodInvoker)delegate {
@@ -106,21 +107,14 @@ namespace ScannerApp
         {
             this.txtBarcodes = new TextBox();
             this.txtLog = new TextBox();
+            this.txtDelimiter = new TextBox();
             this.btnSimulateKeyboard = new Button();
             this.btnSimulateWebSocket = new Button();
             this.lblStatus = new Label();
             this.lblWsStatus = new Label();
-            this.numDelay = new NumericUpDown();
-            this.numDelayBarcode = new NumericUpDown();
-            this.numReadDuration = new NumericUpDown();
-            
-            Label lbl1 = new Label() { Text = "Delay char (ms):", AutoSize = true, Location = new Point(12, 180) };
-            Label lbl2 = new Label() { Text = "Delay bar (ms):", AutoSize = true, Location = new Point(200, 180) };
-            Label lbl3 = new Label() { Text = "RFID Read Time (ms):", AutoSize = true, Location = new Point(12, 213) };
-            
-            ((System.ComponentModel.ISupportInitialize)(this.numDelay)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.numDelayBarcode)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.numReadDuration)).BeginInit();
+
+            Label lblDelimiter = new Label() { Text = "Delimiter:", AutoSize = true, Location = new Point(12, 180) };
+
             this.SuspendLayout();
 
             this.lblWsStatus.AutoSize = true;
@@ -128,66 +122,51 @@ namespace ScannerApp
 
             // txtBarcodes
             this.txtBarcodes.Location = new Point(12, 35);
-            this.txtBarcodes.Multiline = true;  
+            this.txtBarcodes.Multiline = true;
             this.txtBarcodes.Size = new Size(400, 140);
             this.txtBarcodes.Text = "RFID_001\r\nRFID_002\r\nRFID_003\r\nRFID_004\r\nRFID_005";
 
-            this.numDelay.Location = new Point(110, 178);
-            this.numDelay.Size = new Size(60, 23);
-            this.numDelay.Value = 20;
-
-            this.numDelayBarcode.Location = new Point(290, 178);
-            this.numDelayBarcode.Size = new Size(60, 23);
-            this.numDelayBarcode.Value = 50;
-
-            this.numReadDuration.Location = new Point(140, 210);
-            this.numReadDuration.Size = new Size(80, 23);
-            this.numReadDuration.Value = 1000;
-            this.numReadDuration.Maximum = 60000;
+            // txtDelimiter
+            this.txtDelimiter.Location = new Point(80, 178);
+            this.txtDelimiter.Size = new Size(30, 23);
+            this.txtDelimiter.Text = "|";
 
             // btnSimulateKeyboard
-            this.btnSimulateKeyboard.Location = new Point(12, 240);
-            this.btnSimulateKeyboard.Size = new Size(190, 40);
-            this.btnSimulateKeyboard.Text = "Send via Keyboard (3s wait)";
+            this.btnSimulateKeyboard.Location = new Point(12, 210);
+            this.btnSimulateKeyboard.Size = new Size(195, 40);
+            this.btnSimulateKeyboard.Text = "Send via Keyboard (3s)";
             this.btnSimulateKeyboard.Click += btnSimulateKeyboard_Click;
 
             // btnSimulateWebSocket
-            this.btnSimulateWebSocket.Location = new Point(222, 240);
-            this.btnSimulateWebSocket.Size = new Size(190, 40);
-            this.btnSimulateWebSocket.Text = "Send via WebSocket (Instant)";
+            this.btnSimulateWebSocket.Location = new Point(217, 210);
+            this.btnSimulateWebSocket.Size = new Size(195, 40);
+            this.btnSimulateWebSocket.Text = "Send via WebSocket";
             this.btnSimulateWebSocket.Click += btnSimulateWebSocket_Click;
 
             // txtLog
-            this.txtLog.Location = new Point(12, 290);
+            this.txtLog.Location = new Point(12, 260);
             this.txtLog.Multiline = true;
             this.txtLog.ScrollBars = ScrollBars.Vertical;
             this.txtLog.ReadOnly = true;
-            this.txtLog.Size = new Size(400, 120);
+            this.txtLog.Size = new Size(400, 140);
 
             // lblStatus
             this.lblStatus.AutoSize = true;
-            this.lblStatus.Location = new Point(12, 420);
+            this.lblStatus.Location = new Point(12, 410);
             this.lblStatus.Text = "Ready.";
 
             // Form1
-            this.ClientSize = new Size(424, 450);
-            this.Controls.Add(lbl1);
-            this.Controls.Add(lbl2);
-            this.Controls.Add(lbl3);
+            this.ClientSize = new Size(424, 440);
+            this.Controls.Add(lblDelimiter);
             this.Controls.Add(this.lblWsStatus);
-            this.Controls.Add(this.numDelay);
-            this.Controls.Add(this.numDelayBarcode);
-            this.Controls.Add(this.numReadDuration);
+            this.Controls.Add(this.txtDelimiter);
             this.Controls.Add(this.txtLog);
             this.Controls.Add(this.lblStatus);
             this.Controls.Add(this.btnSimulateKeyboard);
             this.Controls.Add(this.btnSimulateWebSocket);
             this.Controls.Add(this.txtBarcodes);
             this.Text = "Device Simulator";
-            
-            ((System.ComponentModel.ISupportInitialize)(this.numDelay)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.numDelayBarcode)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.numReadDuration)).EndInit();
+
             this.ResumeLayout(false);
             this.PerformLayout();
         }
@@ -197,20 +176,17 @@ namespace ScannerApp
             var lines = txtBarcodes.Lines;
             if (lines.Length == 0) return;
 
-            int delay = (int)numDelay.Value;
-            int delayBar = (int)numDelayBarcode.Value;
-            
+            string delimiter = txtDelimiter.Text;
+
             btnSimulateKeyboard.Enabled = false;
             btnSimulateWebSocket.Enabled = false;
             lblStatus.Text = "Waiting 3 seconds...";
-            LogMessage("Starting Keyboard Emulation...");
-            
-            await System.Threading.Tasks.Task.Run(() => 
-            {
-                _deviceManager.SendViaKeyboard(lines, 3000, delay, delayBar);
-            });
+            LogMessage($"Starting Keyboard Emulation (delimiter='{delimiter}')...");
 
-            LogMessage("Keyboard Emulation completed.");
+            await System.Threading.Tasks.Task.Delay(3000);
+            var (count, elapsed) = _deviceManager.SendViaKeyboard(lines, 0, delimiter);
+
+            LogMessage($"Keyboard done: {count} barcodes, paste took {elapsed}ms");
             lblStatus.Text = "Ready.";
             btnSimulateKeyboard.Enabled = true;
             btnSimulateWebSocket.Enabled = true;

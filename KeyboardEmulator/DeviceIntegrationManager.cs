@@ -60,31 +60,23 @@ namespace KeyboardEmulator
                 .ToList();
         }
 
-        public void SendViaKeyboard(string[] barcodes, int waitBeforeStartMs = 3000, int delayBetweenKeys = 20, int delayBetweenBarcodes = 50)
+        public (int count, long elapsedMs) SendViaKeyboard(string[] barcodes, int waitBeforeStartMs = 3000, string delimiter = "|")
         {
             Thread.Sleep(waitBeforeStartMs);
 
             var processedData = ProcessData(barcodes);
+            if (processedData.Count == 0) return (0, 0);
 
-            foreach (var barcode in processedData)
-            {
-                if (string.IsNullOrWhiteSpace(barcode)) continue;
+            string batchString = string.Join(delimiter, processedData);
 
-                foreach (char c in barcode)
-                {
-                    string key = c.ToString();
-                    if (key == "+" || key == "^" || key == "%" || key == "~" || key == "(" || key == ")" || key == "{" || key == "}" || key == "[" || key == "]")
-                    {
-                        key = "{" + key + "}";
-                    }
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            Clipboard.SetText(batchString);
+            SendKeys.SendWait("^v");
+            sw.Stop();
 
-                    SendKeys.SendWait(key);
-                    Thread.Sleep(delayBetweenKeys);
-                }
+            Clipboard.Clear();
 
-                SendKeys.SendWait("{ENTER}");
-                Thread.Sleep(delayBetweenBarcodes);
-            }
+            return (processedData.Count, sw.ElapsedMilliseconds);
         }
 
         public void SendViaWebSocket(string[] data)
