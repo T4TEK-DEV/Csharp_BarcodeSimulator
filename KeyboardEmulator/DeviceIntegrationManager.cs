@@ -19,7 +19,7 @@ namespace KeyboardEmulator
             _allSockets = new List<IWebSocketConnection>();
         }
 
-        public void StartServer(int port = 8181, Action<string>? onCommandReceived = null)
+        public void StartServer(int port = 9001, Action<string>? onCommandReceived = null)
         {
             _onCommandReceived = onCommandReceived;
             FleckLog.Level = LogLevel.Error; // Reduce console spam
@@ -60,12 +60,18 @@ namespace KeyboardEmulator
                 .ToList();
         }
 
-        public (int count, long elapsedMs) SendViaKeyboard(string[] barcodes, int waitBeforeStartMs = 3000, string delimiter = "|")
+        public (int count, long elapsedMs) SendViaKeyboard(string[] barcodes, int waitBeforeStartMs = 3000, string delimiter = "|", string prefix = "")
         {
             Thread.Sleep(waitBeforeStartMs);
 
             var processedData = ProcessData(barcodes);
             if (processedData.Count == 0) return (0, 0);
+
+            // Prefix each barcode with button id (e.g. "rfid:TAG001")
+            if (!string.IsNullOrEmpty(prefix))
+            {
+                processedData = processedData.Select(d => $"{prefix}:{d}").ToList();
+            }
 
             string batchString = string.Join(delimiter, processedData);
 

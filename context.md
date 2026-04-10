@@ -8,7 +8,7 @@ Modern warehouse operations utilize extensive automated devices, commonly Tradit
 ## The Solution
 This C# application acts as a Local Hardware Gateway. It provides a **Hybrid Integration**:
 - It proxies single-item barcode scans via the traditional OS Keyboard HID protocol for immediate compatibility.
-- It clusters massive RFID collections into optimized JSON arrays and routes them instantaneously through a local WebSocket server (Port `8181`), overriding interface latency and preventing focus-loss errors.
+- It clusters massive RFID collections into optimized JSON arrays and routes them instantaneously through a local WebSocket server (Port `9001`), overriding interface latency and preventing focus-loss errors.
 
 ## Application Scenarios
 - **Warehouse Packing**: An employee walks through an RFID portal; the portal pushes 50 tags via WebSocket.

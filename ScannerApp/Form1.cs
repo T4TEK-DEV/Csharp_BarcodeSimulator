@@ -29,11 +29,12 @@ namespace ScannerApp
 
             try
             {
-                _deviceManager.StartServer(8181, message => {
+                _deviceManager.StartServer(9001, message => {
                     this.Invoke((MethodInvoker)delegate {
                         LogMessage($"[WS Client] {message}");
 
                         string action = "";
+                        string buttonId = "";
                         int timeout = 1000;
 
                         try {
@@ -43,6 +44,8 @@ namespace ScannerApp
                                     action = actElem.GetString() ?? "";
                                 if (doc.RootElement.TryGetProperty("duration", out var durElem) && durElem.ValueKind == System.Text.Json.JsonValueKind.Number)
                                     timeout = durElem.GetInt32();
+                                if (doc.RootElement.TryGetProperty("id", out var idElem))
+                                    buttonId = idElem.GetString() ?? "";
                             }
                         } catch {
                             if (message.Contains("READ_RFID_KEYBOARD")) action = "READ_RFID_KEYBOARD";
@@ -51,17 +54,18 @@ namespace ScannerApp
 
                         if (action == "READ_RFID_KEYBOARD")
                         {
-                            LogMessage($">> Odoo triggered RFID read (KEYBOARD). Duration={timeout}ms");
+                            LogMessage($">> Odoo triggered RFID read (KEYBOARD). Id={buttonId}, Duration={timeout}ms");
                             string[] lines = txtBarcodes.Lines;
                             string delimiter = txtDelimiter.Text;
+                            string capturedId = buttonId;
                             int capturedTimeout = timeout;
 
                             System.Threading.Tasks.Task.Run(async () =>
                             {
                                 await System.Threading.Tasks.Task.Delay(capturedTimeout);
                                 this.Invoke((MethodInvoker)delegate {
-                                    var (count, elapsed) = _deviceManager.SendViaKeyboard(lines, 0, delimiter);
-                                    LogMessage($">> KB done: {count} barcodes, paste took {elapsed}ms");
+                                    var (count, elapsed) = _deviceManager.SendViaKeyboard(lines, 0, delimiter, capturedId);
+                                    LogMessage($">> KB done: {count} barcodes (prefix={capturedId}), paste took {elapsed}ms");
                                 });
                             });
                         }
@@ -80,9 +84,9 @@ namespace ScannerApp
                         }
                     });
                 });
-                lblWsStatus.Text = "WS Server: ws://127.0.0.1:8181 (Running 🟢)";
+                lblWsStatus.Text = "WS Server: ws://127.0.0.1:9001 (Running 🟢)";
                 lblWsStatus.ForeColor = Color.Green;
-                LogMessage("Server started on port 8181.");
+                LogMessage("Server started on port 9001.");
             }
             catch (Exception ex)
             {
