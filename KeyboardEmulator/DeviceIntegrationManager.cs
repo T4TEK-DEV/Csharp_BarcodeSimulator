@@ -67,13 +67,13 @@ namespace KeyboardEmulator
             var processedData = ProcessData(barcodes);
             if (processedData.Count == 0) return (0, 0);
 
-            // Prefix each barcode with button id (e.g. "rfid:TAG001")
+            string batchString = string.Join(delimiter, processedData);
+
+            // Prefix the batch with button id only once (e.g. "rfid:TAG001|TAG002")
             if (!string.IsNullOrEmpty(prefix))
             {
-                processedData = processedData.Select(d => $"{prefix}:{d}").ToList();
+                batchString = $"{prefix}:{batchString}";
             }
-
-            string batchString = string.Join(delimiter, processedData);
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
             Clipboard.SetText(batchString);

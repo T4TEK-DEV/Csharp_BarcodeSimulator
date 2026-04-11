@@ -16,11 +16,13 @@ namespace ScannerApp
         private Label lblWsStatus;
 
         private DeviceIntegrationManager _deviceManager;
+        private System.Collections.Generic.Dictionary<string, System.Threading.CancellationTokenSource> _activeTasks;
 
         public Form1()
         {
             InitializeComponent();
             _deviceManager = new DeviceIntegrationManager();
+            _activeTasks = new System.Collections.Generic.Dictionary<string, System.Threading.CancellationTokenSource>();
         }
 
         protected override void OnLoad(EventArgs e)
@@ -60,14 +62,34 @@ namespace ScannerApp
                             string capturedId = buttonId;
                             int capturedTimeout = timeout;
 
+                            var cts = new System.Threading.CancellationTokenSource();
+                            _activeTasks[capturedId] = cts;
+
                             System.Threading.Tasks.Task.Run(async () =>
                             {
-                                await System.Threading.Tasks.Task.Delay(capturedTimeout);
+                                try {
+                                    if (capturedTimeout > 0) {
+                                        await System.Threading.Tasks.Task.Delay(capturedTimeout, cts.Token);
+                                    } else {
+                                        await System.Threading.Tasks.Task.Delay(System.Threading.Timeout.Infinite, cts.Token);
+                                    }
+                                } catch (System.Threading.Tasks.TaskCanceledException) {
+                                    // Bị hủy sớm do manual stop, bỏ qua delay
+                                }
+
                                 this.Invoke((MethodInvoker)delegate {
+                                    _activeTasks.Remove(capturedId);
                                     var (count, elapsed) = _deviceManager.SendViaKeyboard(lines, 0, delimiter, capturedId);
                                     LogMessage($">> KB done: {count} barcodes (prefix={capturedId}), paste took {elapsed}ms");
                                 });
                             });
+                        }
+                        else if (action == "STOP_RFID_KEYBOARD")
+                        {
+                            LogMessage($">> Odoo triggered STOP. Id={buttonId}");
+                            if (_activeTasks.TryGetValue(buttonId, out var cts)) {
+                                cts.Cancel();
+                            }
                         }
                         else if (action == "READ_RFID")
                         {
