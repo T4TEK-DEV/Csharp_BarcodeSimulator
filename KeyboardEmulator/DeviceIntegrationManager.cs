@@ -67,22 +67,69 @@ namespace KeyboardEmulator
             var processedData = ProcessData(barcodes);
             if (processedData.Count == 0) return (0, 0);
 
-            string batchString = string.Join(delimiter, processedData);
-
-            // Prefix the batch with button id only once (e.g. "rfid:TAG001|TAG002")
+            // Có prefix (button id) ⇒ thiết bị BỊ ĐỘNG (passive HID, vd. RFID
+            // reader): dùng clipboard + Ctrl+V để paste 1 lần "prefix:val|val".
+            // Browser nhận paste event → t4_passivehid_bridge.barcode_service_patch
+            // pasteHandler bắt qua "prefix:" rồi fire t4_passive_scanned.
             if (!string.IsNullOrEmpty(prefix))
             {
-                batchString = $"{prefix}:{batchString}";
+                string batchString = $"{prefix}:{string.Join(delimiter, processedData)}";
+                var swPaste = System.Diagnostics.Stopwatch.StartNew();
+                Clipboard.SetText(batchString);
+                SendKeys.SendWait("^v");
+                swPaste.Stop();
+                Clipboard.Clear();
+                return (processedData.Count, swPaste.ElapsedMilliseconds);
             }
 
+            // Không prefix ⇒ thiết bị CHỦ ĐỘNG (active barcode scanner /
+            // keyboard wedge): mô phỏng gõ phím thật. Mỗi barcode được type
+            // thành chuỗi ký tự + ENTER (kết thúc barcode). Cursor đang focus
+            // trên field nào thì giá trị vào field đó, Enter trigger
+            // addTableEnterListener của t4_sequential_auto_input → fill
+            // ORM + nhảy sang data-auto-input-order kế tiếp.
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            Clipboard.SetText(batchString);
-            SendKeys.SendWait("^v");
+            foreach (var raw in processedData)
+            {
+                string escaped = EscapeForSendKeys(raw);
+                SendKeys.SendWait(escaped);
+                SendKeys.SendWait("{ENTER}");
+                // Cho OWL re-render + handler t4_sequential_auto_input
+                // moveToNextEmptyTarget xong (activateEditMode + focus) trước
+                // khi gõ barcode kế tiếp; nếu gửi quá nhanh, ký tự barcode
+                // tiếp theo sẽ rơi vào field cũ chưa kịp đổi.
+                Thread.Sleep(250);
+            }
             sw.Stop();
-
-            Clipboard.Clear();
-
             return (processedData.Count, sw.ElapsedMilliseconds);
+        }
+
+        /// <summary>
+        /// Escape các ký tự đặc biệt của SendKeys: + ^ % ~ ( ) { } [ ]
+        /// (xem https://learn.microsoft.com/dotnet/api/system.windows.forms.sendkeys).
+        /// </summary>
+        private static string EscapeForSendKeys(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+            var sb = new System.Text.StringBuilder(text.Length + 8);
+            foreach (var ch in text)
+            {
+                switch (ch)
+                {
+                    case '+': sb.Append("{+}"); break;
+                    case '^': sb.Append("{^}"); break;
+                    case '%': sb.Append("{%}"); break;
+                    case '~': sb.Append("{~}"); break;
+                    case '(': sb.Append("{(}"); break;
+                    case ')': sb.Append("{)}"); break;
+                    case '{': sb.Append("{{}"); break;
+                    case '}': sb.Append("{}}"); break;
+                    case '[': sb.Append("{[}"); break;
+                    case ']': sb.Append("{]}"); break;
+                    default:  sb.Append(ch);   break;
+                }
+            }
+            return sb.ToString();
         }
 
         public void SendViaWebSocket(string[] data)
