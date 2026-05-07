@@ -60,7 +60,13 @@ namespace KeyboardEmulator
                 .ToList();
         }
 
-        public (int count, long elapsedMs) SendViaKeyboard(string[] barcodes, int waitBeforeStartMs = 3000, string delimiter = "|", string prefix = "")
+        // Delimiter cố định "|" — khớp với BATCH_DELIMITER ở phía receiver
+        // (t4_passivehid_bridge: barcode_service_patch.js, form_passive_handler.js,
+        // list_passive_handler.js; t4_sequential_auto_input: auto_input_handler_mixin).
+        // Đổi giá trị này phải đồng bộ tất cả các nơi nói trên.
+        private const string Delimiter = "|";
+
+        public (int count, long elapsedMs) SendViaKeyboard(string[] barcodes, int waitBeforeStartMs = 3000, string prefix = "")
         {
             Thread.Sleep(waitBeforeStartMs);
 
@@ -73,7 +79,7 @@ namespace KeyboardEmulator
             // pasteHandler bắt qua "prefix:" rồi fire t4_passive_scanned.
             if (!string.IsNullOrEmpty(prefix))
             {
-                string batchString = $"{prefix}:{string.Join(delimiter, processedData)}";
+                string batchString = $"{prefix}:{string.Join(Delimiter, processedData)}";
                 var swPaste = System.Diagnostics.Stopwatch.StartNew();
                 Clipboard.SetText(batchString);
                 SendKeys.SendWait("^v");

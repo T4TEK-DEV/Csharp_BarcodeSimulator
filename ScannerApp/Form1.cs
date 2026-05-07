@@ -9,7 +9,6 @@ namespace ScannerApp
     {
         private TextBox txtBarcodes;
         private TextBox txtLog;
-        private TextBox txtDelimiter;
         private Button btnSimulateKeyboard;
         private Button btnSimulateWebSocket;
         private Label lblStatus;
@@ -58,7 +57,6 @@ namespace ScannerApp
                         {
                             LogMessage($">> Odoo triggered RFID read (KEYBOARD). Id={buttonId}, Duration={timeout}ms");
                             string[] lines = txtBarcodes.Lines;
-                            string delimiter = txtDelimiter.Text;
                             string capturedId = buttonId;
                             int capturedTimeout = timeout;
 
@@ -79,7 +77,7 @@ namespace ScannerApp
 
                                 this.Invoke((MethodInvoker)delegate {
                                     _activeTasks.Remove(capturedId);
-                                    var (count, elapsed) = _deviceManager.SendViaKeyboard(lines, 0, delimiter, capturedId);
+                                    var (count, elapsed) = _deviceManager.SendViaKeyboard(lines, 0, capturedId);
                                     LogMessage($">> KB done: {count} barcodes (prefix={capturedId}), paste took {elapsed}ms");
                                 });
                             });
@@ -133,13 +131,10 @@ namespace ScannerApp
         {
             this.txtBarcodes = new TextBox();
             this.txtLog = new TextBox();
-            this.txtDelimiter = new TextBox();
             this.btnSimulateKeyboard = new Button();
             this.btnSimulateWebSocket = new Button();
             this.lblStatus = new Label();
             this.lblWsStatus = new Label();
-
-            Label lblDelimiter = new Label() { Text = "Delimiter:", AutoSize = true, Location = new Point(12, 180) };
 
             this.SuspendLayout();
 
@@ -151,11 +146,6 @@ namespace ScannerApp
             this.txtBarcodes.Multiline = true;
             this.txtBarcodes.Size = new Size(400, 140);
             this.txtBarcodes.Text = "RFID_001\r\nRFID_002\r\nRFID_003\r\nRFID_004\r\nRFID_005";
-
-            // txtDelimiter
-            this.txtDelimiter.Location = new Point(80, 178);
-            this.txtDelimiter.Size = new Size(30, 23);
-            this.txtDelimiter.Text = "|";
 
             // btnSimulateKeyboard
             this.btnSimulateKeyboard.Location = new Point(12, 210);
@@ -183,9 +173,7 @@ namespace ScannerApp
 
             // Form1
             this.ClientSize = new Size(424, 440);
-            this.Controls.Add(lblDelimiter);
             this.Controls.Add(this.lblWsStatus);
-            this.Controls.Add(this.txtDelimiter);
             this.Controls.Add(this.txtLog);
             this.Controls.Add(this.lblStatus);
             this.Controls.Add(this.btnSimulateKeyboard);
@@ -202,15 +190,13 @@ namespace ScannerApp
             var lines = txtBarcodes.Lines;
             if (lines.Length == 0) return;
 
-            string delimiter = txtDelimiter.Text;
-
             btnSimulateKeyboard.Enabled = false;
             btnSimulateWebSocket.Enabled = false;
             lblStatus.Text = "Waiting 3 seconds...";
-            LogMessage($"Starting Keyboard Emulation (delimiter='{delimiter}')...");
+            LogMessage("Starting Keyboard Emulation...");
 
             await System.Threading.Tasks.Task.Delay(3000);
-            var (count, elapsed) = _deviceManager.SendViaKeyboard(lines, 0, delimiter);
+            var (count, elapsed) = _deviceManager.SendViaKeyboard(lines, 0);
 
             LogMessage($"Keyboard done: {count} barcodes, paste took {elapsed}ms");
             lblStatus.Text = "Ready.";
