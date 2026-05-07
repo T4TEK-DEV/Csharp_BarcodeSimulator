@@ -11,6 +11,7 @@ namespace ScannerApp
         private TextBox txtLog;
         private Button btnSimulateKeyboard;
         private Button btnSimulateWebSocket;
+        private Button btnSimulateClipboard;
         private Label lblStatus;
         private Label lblWsStatus;
 
@@ -133,6 +134,7 @@ namespace ScannerApp
             this.txtLog = new TextBox();
             this.btnSimulateKeyboard = new Button();
             this.btnSimulateWebSocket = new Button();
+            this.btnSimulateClipboard = new Button();
             this.lblStatus = new Label();
             this.lblWsStatus = new Label();
 
@@ -159,8 +161,14 @@ namespace ScannerApp
             this.btnSimulateWebSocket.Text = "Send via WebSocket";
             this.btnSimulateWebSocket.Click += btnSimulateWebSocket_Click;
 
+            // btnSimulateClipboard — Ctrl+V batch paste (passive HID style, no prefix)
+            this.btnSimulateClipboard.Location = new Point(12, 255);
+            this.btnSimulateClipboard.Size = new Size(400, 35);
+            this.btnSimulateClipboard.Text = "Send via Clipboard (Ctrl+V, 3s delay)";
+            this.btnSimulateClipboard.Click += btnSimulateClipboard_Click;
+
             // txtLog
-            this.txtLog.Location = new Point(12, 260);
+            this.txtLog.Location = new Point(12, 300);
             this.txtLog.Multiline = true;
             this.txtLog.ScrollBars = ScrollBars.Vertical;
             this.txtLog.ReadOnly = true;
@@ -168,16 +176,17 @@ namespace ScannerApp
 
             // lblStatus
             this.lblStatus.AutoSize = true;
-            this.lblStatus.Location = new Point(12, 410);
+            this.lblStatus.Location = new Point(12, 450);
             this.lblStatus.Text = "Ready.";
 
             // Form1
-            this.ClientSize = new Size(424, 440);
+            this.ClientSize = new Size(424, 480);
             this.Controls.Add(this.lblWsStatus);
             this.Controls.Add(this.txtLog);
             this.Controls.Add(this.lblStatus);
             this.Controls.Add(this.btnSimulateKeyboard);
             this.Controls.Add(this.btnSimulateWebSocket);
+            this.Controls.Add(this.btnSimulateClipboard);
             this.Controls.Add(this.txtBarcodes);
             this.Text = "Device Simulator";
 
@@ -190,8 +199,7 @@ namespace ScannerApp
             var lines = txtBarcodes.Lines;
             if (lines.Length == 0) return;
 
-            btnSimulateKeyboard.Enabled = false;
-            btnSimulateWebSocket.Enabled = false;
+            SetButtonsEnabled(false);
             lblStatus.Text = "Waiting 3 seconds...";
             LogMessage("Starting Keyboard Emulation...");
 
@@ -200,8 +208,33 @@ namespace ScannerApp
 
             LogMessage($"Keyboard done: {count} barcodes, paste took {elapsed}ms");
             lblStatus.Text = "Ready.";
-            btnSimulateKeyboard.Enabled = true;
-            btnSimulateWebSocket.Enabled = true;
+            SetButtonsEnabled(true);
+        }
+
+        private async void btnSimulateClipboard_Click(object sender, EventArgs e)
+        {
+            var lines = txtBarcodes.Lines;
+            if (lines.Length == 0) return;
+
+            SetButtonsEnabled(false);
+            lblStatus.Text = "Waiting 3 seconds... (focus target field)";
+            LogMessage("Starting Clipboard paste (Ctrl+V)...");
+
+            // Delay ở UI thread (await Task.Delay không block UI). Clipboard.SetText
+            // bắt buộc chạy trên STA → gọi trực tiếp ở UI thread sau khi delay xong.
+            await System.Threading.Tasks.Task.Delay(3000);
+            var (count, elapsed) = _deviceManager.SendViaClipboard(lines, 0);
+
+            LogMessage($"Clipboard done: {count} barcodes, paste took {elapsed}ms");
+            lblStatus.Text = "Ready.";
+            SetButtonsEnabled(true);
+        }
+
+        private void SetButtonsEnabled(bool enabled)
+        {
+            btnSimulateKeyboard.Enabled = enabled;
+            btnSimulateWebSocket.Enabled = enabled;
+            btnSimulateClipboard.Enabled = enabled;
         }
 
         private void btnSimulateWebSocket_Click(object sender, EventArgs e)

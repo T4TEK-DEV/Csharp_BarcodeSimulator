@@ -111,6 +111,29 @@ namespace KeyboardEmulator
         }
 
         /// <summary>
+        /// Mô phỏng RFID reader thật ở chế độ passive HID nhưng KHÔNG kèm
+        /// prefix (button id): join danh sách bằng Delimiter rồi paste 1 lần
+        /// vào field đang focus (clipboard + Ctrl+V).
+        /// Receiver phía Odoo sẽ rơi vào nhánh "no prefix → split by |" của
+        /// barcode_service_patch.js (legacy fallback).
+        /// </summary>
+        public (int count, long elapsedMs) SendViaClipboard(string[] barcodes, int waitBeforeStartMs = 3000)
+        {
+            Thread.Sleep(waitBeforeStartMs);
+
+            var processedData = ProcessData(barcodes);
+            if (processedData.Count == 0) return (0, 0);
+
+            string batchString = string.Join(Delimiter, processedData);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            Clipboard.SetText(batchString);
+            SendKeys.SendWait("^v");
+            sw.Stop();
+            Clipboard.Clear();
+            return (processedData.Count, sw.ElapsedMilliseconds);
+        }
+
+        /// <summary>
         /// Escape các ký tự đặc biệt của SendKeys: + ^ % ~ ( ) { } [ ]
         /// (xem https://learn.microsoft.com/dotnet/api/system.windows.forms.sendkeys).
         /// </summary>
