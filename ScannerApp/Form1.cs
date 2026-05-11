@@ -204,7 +204,7 @@ namespace ScannerApp
             LogMessage("Starting Keyboard Emulation...");
 
             await System.Threading.Tasks.Task.Delay(3000);
-            var (count, elapsed) = _deviceManager.SendViaKeyboard(lines, 0);
+            var (count, elapsed) = ActiveDeviceSimulator.SendViaKeyboard(lines);
 
             LogMessage($"Keyboard done: {count} barcodes, paste took {elapsed}ms");
             lblStatus.Text = "Ready.";
@@ -223,7 +223,7 @@ namespace ScannerApp
             // Delay ở UI thread (await Task.Delay không block UI). Clipboard.SetText
             // bắt buộc chạy trên STA → gọi trực tiếp ở UI thread sau khi delay xong.
             await System.Threading.Tasks.Task.Delay(3000);
-            var (count, elapsed) = _deviceManager.SendViaClipboard(lines, 0);
+            var (count, elapsed) = ActiveDeviceSimulator.SendViaClipboard(lines);
 
             LogMessage($"Clipboard done: {count} barcodes, paste took {elapsed}ms");
             lblStatus.Text = "Ready.";
