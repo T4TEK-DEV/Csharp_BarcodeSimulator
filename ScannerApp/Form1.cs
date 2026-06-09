@@ -18,6 +18,13 @@ namespace ScannerApp
         private DeviceIntegrationManager _deviceManager;
         private System.Collections.Generic.Dictionary<string, System.Threading.CancellationTokenSource> _activeTasks;
 
+        // Runtime delimiter / prefix-char nhận từ Odoo qua lệnh start (field
+        // `delimiter` / `prefix_char`). Default khớp t4_sti.barcode_batch_delimiter
+        // ("|") và barcode_prefix_char (":") — chỉ dùng khi Odoo chưa gửi.
+        private string _delimiter = DeviceIntegrationManager.DefaultDelimiter;
+        private string _prefixChar = DeviceIntegrationManager.DefaultPrefixChar;
+        private Label lblConfig;
+
         public Form1()
         {
             InitializeComponent();
@@ -48,6 +55,19 @@ namespace ScannerApp
                                     timeout = durElem.GetInt32();
                                 if (doc.RootElement.TryGetProperty("id", out var idElem))
                                     buttonId = idElem.GetString() ?? "";
+                                // Delimiter / prefix-char runtime do Odoo gửi kèm
+                                // lệnh start. Nếu không có → giữ giá trị hiện hành.
+                                if (doc.RootElement.TryGetProperty("delimiter", out var delimElem))
+                                {
+                                    var d = delimElem.GetString();
+                                    if (!string.IsNullOrEmpty(d)) _delimiter = d;
+                                }
+                                if (doc.RootElement.TryGetProperty("prefix_char", out var pfxElem))
+                                {
+                                    var p = pfxElem.GetString();
+                                    if (!string.IsNullOrEmpty(p)) _prefixChar = p;
+                                }
+                                UpdateConfigLabel();
                             }
                         } catch {
                             if (message.Contains("READ_RFID_KEYBOARD")) action = "READ_RFID_KEYBOARD";
@@ -78,8 +98,8 @@ namespace ScannerApp
 
                                 this.Invoke((MethodInvoker)delegate {
                                     _activeTasks.Remove(capturedId);
-                                    var (count, elapsed) = _deviceManager.SendViaKeyboard(lines, 0, capturedId);
-                                    LogMessage($">> KB done: {count} barcodes (prefix={capturedId}), paste took {elapsed}ms");
+                                    var (count, elapsed) = _deviceManager.SendViaKeyboard(lines, 0, capturedId, _delimiter, _prefixChar);
+                                    LogMessage($">> KB done: {count} barcodes (prefix={capturedId}, delim='{_delimiter}', prefixChar='{_prefixChar}'), paste took {elapsed}ms");
                                 });
                             });
                         }
@@ -126,6 +146,12 @@ namespace ScannerApp
         private void LogMessage(string msg)
         {
             txtLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {msg}\r\n");
+        }
+
+        private void UpdateConfigLabel()
+        {
+            if (lblConfig != null)
+                lblConfig.Text = $"Delimiter: '{_delimiter}'   Prefix: '{_prefixChar}'   (từ Odoo)";
         }
 
         private void InitializeComponent()
@@ -179,8 +205,16 @@ namespace ScannerApp
             this.lblStatus.Location = new Point(12, 450);
             this.lblStatus.Text = "Ready.";
 
+            // lblConfig — hiển thị delimiter / prefix-char runtime nhận từ Odoo
+            this.lblConfig = new Label();
+            this.lblConfig.AutoSize = true;
+            this.lblConfig.Location = new Point(12, 475);
+            this.lblConfig.ForeColor = Color.DarkBlue;
+            this.lblConfig.Text = $"Delimiter: '{_delimiter}'   Prefix: '{_prefixChar}'   (default)";
+
             // Form1
-            this.ClientSize = new Size(424, 480);
+            this.ClientSize = new Size(424, 500);
+            this.Controls.Add(this.lblConfig);
             this.Controls.Add(this.lblWsStatus);
             this.Controls.Add(this.txtLog);
             this.Controls.Add(this.lblStatus);

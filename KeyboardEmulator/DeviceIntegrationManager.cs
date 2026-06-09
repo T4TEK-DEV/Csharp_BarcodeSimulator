@@ -60,26 +60,36 @@ namespace KeyboardEmulator
                 .ToList();
         }
 
-        // Delimiter cố định "|" — khớp với BATCH_DELIMITER ở phía receiver
-        // (t4_passivehid_bridge: barcode_service_patch.js, form_passive_handler.js,
-        // list_passive_handler.js; t4_sequential_auto_input: auto_input_handler_mixin).
-        // Đổi giá trị này phải đồng bộ tất cả các nơi nói trên.
-        private const string Delimiter = "|";
+        // Default delimiter "|" + prefix-char ":" — khớp với default
+        // `t4_sti.barcode_batch_delimiter` / `barcode_prefix_char` (browser đọc
+        // qua session). KHÔNG còn hardcode: giá trị runtime được Odoo gửi kèm
+        // trong lệnh start (field `delimiter` / `prefix_char`) và truyền vào
+        // các method bên dưới. 2 hằng này chỉ là fallback khi không nhận được.
+        public const string DefaultDelimiter = "|";
+        public const string DefaultPrefixChar = ":";
 
-        public (int count, long elapsedMs) SendViaKeyboard(string[] barcodes, int waitBeforeStartMs = 3000, string prefix = "")
+        public (int count, long elapsedMs) SendViaKeyboard(
+            string[] barcodes,
+            int waitBeforeStartMs = 3000,
+            string prefix = "",
+            string delimiter = DefaultDelimiter,
+            string prefixChar = DefaultPrefixChar)
         {
             Thread.Sleep(waitBeforeStartMs);
+
+            if (string.IsNullOrEmpty(delimiter)) delimiter = DefaultDelimiter;
+            if (string.IsNullOrEmpty(prefixChar)) prefixChar = DefaultPrefixChar;
 
             var processedData = ProcessData(barcodes);
             if (processedData.Count == 0) return (0, 0);
 
             // Có prefix (button id) ⇒ thiết bị BỊ ĐỘNG (passive HID, vd. RFID
             // reader): dùng clipboard + Ctrl+V để paste 1 lần "prefix:val|val".
-            // Browser nhận paste event → t4_passivehid_bridge.barcode_service_patch
-            // pasteHandler bắt qua "prefix:" rồi fire t4_passive_scanned.
+            // Browser nhận paste event → paste_adapter parse prefix + split
+            // delimiter → dispatch ScanEvent qua t4_input_bus.
             if (!string.IsNullOrEmpty(prefix))
             {
-                string batchString = $"{prefix}:{string.Join(Delimiter, processedData)}";
+                string batchString = $"{prefix}{prefixChar}{string.Join(delimiter, processedData)}";
                 var swPaste = System.Diagnostics.Stopwatch.StartNew();
                 Clipboard.SetText(batchString);
                 SendKeys.SendWait("^v");
@@ -92,7 +102,7 @@ namespace KeyboardEmulator
             // keyboard wedge): mô phỏng gõ phím thật. Mỗi barcode được type
             // thành chuỗi ký tự + ENTER (kết thúc barcode). Cursor đang focus
             // trên field nào thì giá trị vào field đó, Enter trigger
-            // addTableEnterListener của t4_sequential_auto_input → fill
+            // keyboard_adapter → input_bus → FormAutoInputHandler fill
             // ORM + nhảy sang data-auto-input-order kế tiếp.
             var sw = System.Diagnostics.Stopwatch.StartNew();
             foreach (var raw in processedData)
@@ -100,10 +110,9 @@ namespace KeyboardEmulator
                 string escaped = EscapeForSendKeys(raw);
                 SendKeys.SendWait(escaped);
                 SendKeys.SendWait("{ENTER}");
-                // Cho OWL re-render + handler t4_sequential_auto_input
-                // moveToNextEmptyTarget xong (activateEditMode + focus) trước
-                // khi gõ barcode kế tiếp; nếu gửi quá nhanh, ký tự barcode
-                // tiếp theo sẽ rơi vào field cũ chưa kịp đổi.
+                // 250ms khớp với default `active_keystroke_delay_ms` của
+                // t4.sti.config. Nếu OWL re-render chậm, tăng giá trị này
+                // (rebuild C# bridge); nếu nhanh, giảm để tăng throughput.
                 Thread.Sleep(250);
             }
             sw.Stop();
@@ -117,14 +126,19 @@ namespace KeyboardEmulator
         /// Receiver phía Odoo sẽ rơi vào nhánh "no prefix → split by |" của
         /// barcode_service_patch.js (legacy fallback).
         /// </summary>
-        public (int count, long elapsedMs) SendViaClipboard(string[] barcodes, int waitBeforeStartMs = 3000)
+        public (int count, long elapsedMs) SendViaClipboard(
+            string[] barcodes,
+            int waitBeforeStartMs = 3000,
+            string delimiter = DefaultDelimiter)
         {
             Thread.Sleep(waitBeforeStartMs);
+
+            if (string.IsNullOrEmpty(delimiter)) delimiter = DefaultDelimiter;
 
             var processedData = ProcessData(barcodes);
             if (processedData.Count == 0) return (0, 0);
 
-            string batchString = string.Join(Delimiter, processedData);
+            string batchString = string.Join(delimiter, processedData);
             var sw = System.Diagnostics.Stopwatch.StartNew();
             Clipboard.SetText(batchString);
             SendKeys.SendWait("^v");
