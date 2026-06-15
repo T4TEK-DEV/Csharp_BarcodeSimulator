@@ -23,7 +23,14 @@ namespace ScannerApp
         // ("|") và barcode_prefix_char (":") — chỉ dùng khi Odoo chưa gửi.
         private string _delimiter = DeviceIntegrationManager.DefaultDelimiter;
         private string _prefixChar = DeviceIntegrationManager.DefaultPrefixChar;
-        private Label lblConfig;
+
+        // Ô cấu hình thủ công trên form: cho phép set delimiter / prefix-char để
+        // giả lập gửi danh sách tag kèm phân cách mà không cần Odoo đẩy lệnh start.
+        private Label lblDelimiter;
+        private TextBox txtDelimiter;
+        private Label lblPrefixChar;
+        private TextBox txtPrefixChar;
+        private Label lblConfigSource;
 
         public Form1()
         {
@@ -148,10 +155,26 @@ namespace ScannerApp
             txtLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {msg}\r\n");
         }
 
+        // Đồng bộ ô nhập với giá trị Odoo vừa đẩy xuống. Set .Text sẽ kích hoạt
+        // TextChanged (cập nhật _delimiter/_prefixChar về đúng giá trị này), nên
+        // set source label SAU cùng để không bị TextChanged ghi đè thành "thủ công".
         private void UpdateConfigLabel()
         {
-            if (lblConfig != null)
-                lblConfig.Text = $"Delimiter: '{_delimiter}'   Prefix: '{_prefixChar}'   (từ Odoo)";
+            if (txtDelimiter != null) txtDelimiter.Text = _delimiter;
+            if (txtPrefixChar != null) txtPrefixChar.Text = _prefixChar;
+            if (lblConfigSource != null) lblConfigSource.Text = "(từ Odoo)";
+        }
+
+        private void txtDelimiter_TextChanged(object sender, EventArgs e)
+        {
+            _delimiter = txtDelimiter.Text;
+            if (lblConfigSource != null) lblConfigSource.Text = "(thủ công)";
+        }
+
+        private void txtPrefixChar_TextChanged(object sender, EventArgs e)
+        {
+            _prefixChar = txtPrefixChar.Text;
+            if (lblConfigSource != null) lblConfigSource.Text = "(thủ công)";
         }
 
         private void InitializeComponent()
@@ -205,16 +228,44 @@ namespace ScannerApp
             this.lblStatus.Location = new Point(12, 450);
             this.lblStatus.Text = "Ready.";
 
-            // lblConfig — hiển thị delimiter / prefix-char runtime nhận từ Odoo
-            this.lblConfig = new Label();
-            this.lblConfig.AutoSize = true;
-            this.lblConfig.Location = new Point(12, 475);
-            this.lblConfig.ForeColor = Color.DarkBlue;
-            this.lblConfig.Text = $"Delimiter: '{_delimiter}'   Prefix: '{_prefixChar}'   (default)";
+            // Ô cấu hình delimiter / prefix-char — editable. Mặc định khớp
+            // default của t4_sti; Odoo đẩy lệnh start sẽ ghi đè, user chỉnh tay
+            // cũng được. Giá trị này dùng khi gửi danh sách tag (Send via Clipboard).
+            this.lblDelimiter = new Label();
+            this.lblDelimiter.AutoSize = true;
+            this.lblDelimiter.Location = new Point(12, 473);
+            this.lblDelimiter.Text = "Delimiter:";
+
+            this.txtDelimiter = new TextBox();
+            this.txtDelimiter.Location = new Point(75, 470);
+            this.txtDelimiter.Size = new Size(35, 23);
+            this.txtDelimiter.Text = _delimiter;
+            this.txtDelimiter.TextChanged += txtDelimiter_TextChanged;
+
+            this.lblPrefixChar = new Label();
+            this.lblPrefixChar.AutoSize = true;
+            this.lblPrefixChar.Location = new Point(120, 473);
+            this.lblPrefixChar.Text = "Prefix:";
+
+            this.txtPrefixChar = new TextBox();
+            this.txtPrefixChar.Location = new Point(165, 470);
+            this.txtPrefixChar.Size = new Size(35, 23);
+            this.txtPrefixChar.Text = _prefixChar;
+            this.txtPrefixChar.TextChanged += txtPrefixChar_TextChanged;
+
+            this.lblConfigSource = new Label();
+            this.lblConfigSource.AutoSize = true;
+            this.lblConfigSource.Location = new Point(210, 473);
+            this.lblConfigSource.ForeColor = Color.DarkBlue;
+            this.lblConfigSource.Text = "(default)";
 
             // Form1
-            this.ClientSize = new Size(424, 500);
-            this.Controls.Add(this.lblConfig);
+            this.ClientSize = new Size(424, 505);
+            this.Controls.Add(this.lblDelimiter);
+            this.Controls.Add(this.txtDelimiter);
+            this.Controls.Add(this.lblPrefixChar);
+            this.Controls.Add(this.txtPrefixChar);
+            this.Controls.Add(this.lblConfigSource);
             this.Controls.Add(this.lblWsStatus);
             this.Controls.Add(this.txtLog);
             this.Controls.Add(this.lblStatus);
@@ -257,9 +308,9 @@ namespace ScannerApp
             // Delay ở UI thread (await Task.Delay không block UI). Clipboard.SetText
             // bắt buộc chạy trên STA → gọi trực tiếp ở UI thread sau khi delay xong.
             await System.Threading.Tasks.Task.Delay(3000);
-            var (count, elapsed) = ActiveDeviceSimulator.SendViaClipboard(lines);
+            var (count, elapsed) = ActiveDeviceSimulator.SendViaClipboard(lines, _delimiter);
 
-            LogMessage($"Clipboard done: {count} barcodes, paste took {elapsed}ms");
+            LogMessage($"Clipboard done: {count} barcodes (delim='{_delimiter}'), paste took {elapsed}ms");
             lblStatus.Text = "Ready.";
             SetButtonsEnabled(true);
         }
