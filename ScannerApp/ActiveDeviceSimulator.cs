@@ -13,9 +13,9 @@ namespace ScannerApp
     // ProcessData chuẩn hóa in hoa.
     internal static class ActiveDeviceSimulator
     {
-        // Khớp với BATCH_DELIMITER ở DeviceIntegrationManager + phía receiver
-        // (t4_passivehid_bridge, t4_sequential_auto_input). Đổi giá trị phải
-        // đồng bộ tất cả các nơi đó.
+        // Default khớp với BATCH_DELIMITER ở DeviceIntegrationManager + phía
+        // receiver (t4_passivehid_bridge, t4_sequential_auto_input). Chỉ dùng
+        // khi caller không truyền delimiter (vd. để trống ô cấu hình trên form).
         private const string Delimiter = "|";
 
         // Type từng barcode + ENTER. Mỗi barcode kết thúc bằng Enter để
@@ -38,20 +38,23 @@ namespace ScannerApp
             return (processed.Count, sw.ElapsedMilliseconds);
         }
 
-        // Join bằng Delimiter rồi paste 1 lần (Ctrl+V), giữ nguyên case.
-        // LUÔN thêm Delimiter ở cuối (trailing) làm dấu hiệu batch paste: khi
+        // Join bằng delimiter (cấu hình trên form) rồi paste 1 lần (Ctrl+V),
+        // giữ nguyên case. delimiter rỗng → fallback về Delimiter mặc định.
+        // LUÔN thêm delimiter ở cuối (trailing) làm dấu hiệu batch paste: khi
         // chỉ có 1 thẻ, string.Join không chèn delimiter nào nên chuỗi trần
         // ("RFID_001") không khác gì scan đơn thường — phía nhận
         // (paste_adapter.parseScanText) không nhận diện được đây là batch.
         // Trailing delimiter ("RFID_001|") đảm bảo payload luôn chứa delimiter;
         // receiver split rồi filter(Boolean) loại item rỗng cuối nên case nhiều
         // thẻ không bị ảnh hưởng.
-        public static (int count, long elapsedMs) SendViaClipboard(string[] barcodes)
+        public static (int count, long elapsedMs) SendViaClipboard(string[] barcodes, string delimiter = Delimiter)
         {
+            if (string.IsNullOrEmpty(delimiter)) delimiter = Delimiter;
+
             var processed = Process(barcodes);
             if (processed.Count == 0) return (0, 0);
 
-            string batch = string.Join(Delimiter, processed) + Delimiter;
+            string batch = string.Join(delimiter, processed) + delimiter;
             var sw = Stopwatch.StartNew();
             Clipboard.SetText(batch);
             SendKeys.SendWait("^v");
