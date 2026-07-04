@@ -9,14 +9,28 @@ namespace ScannerApp
     {
         private TextBox txtBarcodes;
         private TextBox txtLog;
-        private TextBox txtDelimiter;
         private Button btnSimulateKeyboard;
         private Button btnSimulateWebSocket;
+        private Button btnSimulateClipboard;
         private Label lblStatus;
         private Label lblWsStatus;
 
         private DeviceIntegrationManager _deviceManager;
         private System.Collections.Generic.Dictionary<string, System.Threading.CancellationTokenSource> _activeTasks;
+
+        // Runtime delimiter / prefix-char nhận từ Odoo qua lệnh start (field
+        // `delimiter` / `prefix_char`). Default khớp t4_sti.barcode_batch_delimiter
+        // ("|") và barcode_prefix_char (":") — chỉ dùng khi Odoo chưa gửi.
+        private string _delimiter = DeviceIntegrationManager.DefaultDelimiter;
+        private string _prefixChar = DeviceIntegrationManager.DefaultPrefixChar;
+
+        // Ô cấu hình thủ công trên form: cho phép set delimiter / prefix-char để
+        // giả lập gửi danh sách tag kèm phân cách mà không cần Odoo đẩy lệnh start.
+        private Label lblDelimiter;
+        private TextBox txtDelimiter;
+        private Label lblPrefixChar;
+        private TextBox txtPrefixChar;
+        private Label lblConfigSource;
 
         public Form1()
         {
@@ -48,6 +62,19 @@ namespace ScannerApp
                                     timeout = durElem.GetInt32();
                                 if (doc.RootElement.TryGetProperty("id", out var idElem))
                                     buttonId = idElem.GetString() ?? "";
+                                // Delimiter / prefix-char runtime do Odoo gửi kèm
+                                // lệnh start. Nếu không có → giữ giá trị hiện hành.
+                                if (doc.RootElement.TryGetProperty("delimiter", out var delimElem))
+                                {
+                                    var d = delimElem.GetString();
+                                    if (!string.IsNullOrEmpty(d)) _delimiter = d;
+                                }
+                                if (doc.RootElement.TryGetProperty("prefix_char", out var pfxElem))
+                                {
+                                    var p = pfxElem.GetString();
+                                    if (!string.IsNullOrEmpty(p)) _prefixChar = p;
+                                }
+                                UpdateConfigLabel();
                             }
                         } catch {
                             if (message.Contains("READ_RFID_KEYBOARD")) action = "READ_RFID_KEYBOARD";
@@ -58,7 +85,6 @@ namespace ScannerApp
                         {
                             LogMessage($">> Odoo triggered RFID read (KEYBOARD). Id={buttonId}, Duration={timeout}ms");
                             string[] lines = txtBarcodes.Lines;
-                            string delimiter = txtDelimiter.Text;
                             string capturedId = buttonId;
                             int capturedTimeout = timeout;
 
@@ -79,8 +105,8 @@ namespace ScannerApp
 
                                 this.Invoke((MethodInvoker)delegate {
                                     _activeTasks.Remove(capturedId);
-                                    var (count, elapsed) = _deviceManager.SendViaKeyboard(lines, 0, delimiter, capturedId);
-                                    LogMessage($">> KB done: {count} barcodes (prefix={capturedId}), paste took {elapsed}ms");
+                                    var (count, elapsed) = _deviceManager.SendViaKeyboard(lines, 0, capturedId, _delimiter, _prefixChar);
+                                    LogMessage($">> KB done: {count} barcodes (prefix={capturedId}, delim='{_delimiter}', prefixChar='{_prefixChar}'), paste took {elapsed}ms");
                                 });
                             });
                         }
@@ -129,17 +155,37 @@ namespace ScannerApp
             txtLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {msg}\r\n");
         }
 
+        // Đồng bộ ô nhập với giá trị Odoo vừa đẩy xuống. Set .Text sẽ kích hoạt
+        // TextChanged (cập nhật _delimiter/_prefixChar về đúng giá trị này), nên
+        // set source label SAU cùng để không bị TextChanged ghi đè thành "thủ công".
+        private void UpdateConfigLabel()
+        {
+            if (txtDelimiter != null) txtDelimiter.Text = _delimiter;
+            if (txtPrefixChar != null) txtPrefixChar.Text = _prefixChar;
+            if (lblConfigSource != null) lblConfigSource.Text = "(từ Odoo)";
+        }
+
+        private void txtDelimiter_TextChanged(object sender, EventArgs e)
+        {
+            _delimiter = txtDelimiter.Text;
+            if (lblConfigSource != null) lblConfigSource.Text = "(thủ công)";
+        }
+
+        private void txtPrefixChar_TextChanged(object sender, EventArgs e)
+        {
+            _prefixChar = txtPrefixChar.Text;
+            if (lblConfigSource != null) lblConfigSource.Text = "(thủ công)";
+        }
+
         private void InitializeComponent()
         {
             this.txtBarcodes = new TextBox();
             this.txtLog = new TextBox();
-            this.txtDelimiter = new TextBox();
             this.btnSimulateKeyboard = new Button();
             this.btnSimulateWebSocket = new Button();
+            this.btnSimulateClipboard = new Button();
             this.lblStatus = new Label();
             this.lblWsStatus = new Label();
-
-            Label lblDelimiter = new Label() { Text = "Delimiter:", AutoSize = true, Location = new Point(12, 180) };
 
             this.SuspendLayout();
 
@@ -151,11 +197,6 @@ namespace ScannerApp
             this.txtBarcodes.Multiline = true;
             this.txtBarcodes.Size = new Size(400, 140);
             this.txtBarcodes.Text = "RFID_001\r\nRFID_002\r\nRFID_003\r\nRFID_004\r\nRFID_005";
-
-            // txtDelimiter
-            this.txtDelimiter.Location = new Point(80, 178);
-            this.txtDelimiter.Size = new Size(30, 23);
-            this.txtDelimiter.Text = "|";
 
             // btnSimulateKeyboard
             this.btnSimulateKeyboard.Location = new Point(12, 210);
@@ -169,8 +210,14 @@ namespace ScannerApp
             this.btnSimulateWebSocket.Text = "Send via WebSocket";
             this.btnSimulateWebSocket.Click += btnSimulateWebSocket_Click;
 
+            // btnSimulateClipboard — Ctrl+V batch paste (passive HID style, no prefix)
+            this.btnSimulateClipboard.Location = new Point(12, 255);
+            this.btnSimulateClipboard.Size = new Size(400, 35);
+            this.btnSimulateClipboard.Text = "Send via Clipboard (Ctrl+V, 3s delay)";
+            this.btnSimulateClipboard.Click += btnSimulateClipboard_Click;
+
             // txtLog
-            this.txtLog.Location = new Point(12, 260);
+            this.txtLog.Location = new Point(12, 300);
             this.txtLog.Multiline = true;
             this.txtLog.ScrollBars = ScrollBars.Vertical;
             this.txtLog.ReadOnly = true;
@@ -178,18 +225,53 @@ namespace ScannerApp
 
             // lblStatus
             this.lblStatus.AutoSize = true;
-            this.lblStatus.Location = new Point(12, 410);
+            this.lblStatus.Location = new Point(12, 450);
             this.lblStatus.Text = "Ready.";
 
+            // Ô cấu hình delimiter / prefix-char — editable. Mặc định khớp
+            // default của t4_sti; Odoo đẩy lệnh start sẽ ghi đè, user chỉnh tay
+            // cũng được. Giá trị này dùng khi gửi danh sách tag (Send via Clipboard).
+            this.lblDelimiter = new Label();
+            this.lblDelimiter.AutoSize = true;
+            this.lblDelimiter.Location = new Point(12, 473);
+            this.lblDelimiter.Text = "Delimiter:";
+
+            this.txtDelimiter = new TextBox();
+            this.txtDelimiter.Location = new Point(75, 470);
+            this.txtDelimiter.Size = new Size(35, 23);
+            this.txtDelimiter.Text = _delimiter;
+            this.txtDelimiter.TextChanged += txtDelimiter_TextChanged;
+
+            this.lblPrefixChar = new Label();
+            this.lblPrefixChar.AutoSize = true;
+            this.lblPrefixChar.Location = new Point(120, 473);
+            this.lblPrefixChar.Text = "Prefix:";
+
+            this.txtPrefixChar = new TextBox();
+            this.txtPrefixChar.Location = new Point(165, 470);
+            this.txtPrefixChar.Size = new Size(35, 23);
+            this.txtPrefixChar.Text = _prefixChar;
+            this.txtPrefixChar.TextChanged += txtPrefixChar_TextChanged;
+
+            this.lblConfigSource = new Label();
+            this.lblConfigSource.AutoSize = true;
+            this.lblConfigSource.Location = new Point(210, 473);
+            this.lblConfigSource.ForeColor = Color.DarkBlue;
+            this.lblConfigSource.Text = "(default)";
+
             // Form1
-            this.ClientSize = new Size(424, 440);
-            this.Controls.Add(lblDelimiter);
-            this.Controls.Add(this.lblWsStatus);
+            this.ClientSize = new Size(424, 505);
+            this.Controls.Add(this.lblDelimiter);
             this.Controls.Add(this.txtDelimiter);
+            this.Controls.Add(this.lblPrefixChar);
+            this.Controls.Add(this.txtPrefixChar);
+            this.Controls.Add(this.lblConfigSource);
+            this.Controls.Add(this.lblWsStatus);
             this.Controls.Add(this.txtLog);
             this.Controls.Add(this.lblStatus);
             this.Controls.Add(this.btnSimulateKeyboard);
             this.Controls.Add(this.btnSimulateWebSocket);
+            this.Controls.Add(this.btnSimulateClipboard);
             this.Controls.Add(this.txtBarcodes);
             this.Text = "Device Simulator";
 
@@ -202,20 +284,42 @@ namespace ScannerApp
             var lines = txtBarcodes.Lines;
             if (lines.Length == 0) return;
 
-            string delimiter = txtDelimiter.Text;
-
-            btnSimulateKeyboard.Enabled = false;
-            btnSimulateWebSocket.Enabled = false;
+            SetButtonsEnabled(false);
             lblStatus.Text = "Waiting 3 seconds...";
-            LogMessage($"Starting Keyboard Emulation (delimiter='{delimiter}')...");
+            LogMessage("Starting Keyboard Emulation...");
 
             await System.Threading.Tasks.Task.Delay(3000);
-            var (count, elapsed) = _deviceManager.SendViaKeyboard(lines, 0, delimiter);
+            var (count, elapsed) = ActiveDeviceSimulator.SendViaKeyboard(lines);
 
             LogMessage($"Keyboard done: {count} barcodes, paste took {elapsed}ms");
             lblStatus.Text = "Ready.";
-            btnSimulateKeyboard.Enabled = true;
-            btnSimulateWebSocket.Enabled = true;
+            SetButtonsEnabled(true);
+        }
+
+        private async void btnSimulateClipboard_Click(object sender, EventArgs e)
+        {
+            var lines = txtBarcodes.Lines;
+            if (lines.Length == 0) return;
+
+            SetButtonsEnabled(false);
+            lblStatus.Text = "Waiting 3 seconds... (focus target field)";
+            LogMessage("Starting Clipboard paste (Ctrl+V)...");
+
+            // Delay ở UI thread (await Task.Delay không block UI). Clipboard.SetText
+            // bắt buộc chạy trên STA → gọi trực tiếp ở UI thread sau khi delay xong.
+            await System.Threading.Tasks.Task.Delay(3000);
+            var (count, elapsed) = ActiveDeviceSimulator.SendViaClipboard(lines, _delimiter);
+
+            LogMessage($"Clipboard done: {count} barcodes (delim='{_delimiter}'), paste took {elapsed}ms");
+            lblStatus.Text = "Ready.";
+            SetButtonsEnabled(true);
+        }
+
+        private void SetButtonsEnabled(bool enabled)
+        {
+            btnSimulateKeyboard.Enabled = enabled;
+            btnSimulateWebSocket.Enabled = enabled;
+            btnSimulateClipboard.Enabled = enabled;
         }
 
         private void btnSimulateWebSocket_Click(object sender, EventArgs e)

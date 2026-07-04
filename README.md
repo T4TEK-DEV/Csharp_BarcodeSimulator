@@ -1,11 +1,28 @@
 # Hybrid Hardware Integration Simulator (Odoo & C#)
 
-Dự án này là giải pháp tích hợp phần cứng nâng cao (máy quét mã vạch và trạm đọc RFID) vào môi trường trình duyệt Odoo bằng mô hình **Hybrid (Song song 2 luồng)**.
+Test simulator cho hệ thống tích hợp phần cứng (máy quét mã vạch + trạm đọc RFID) vào Odoo browser bằng mô hình **Hybrid dual transport** (HID + WebSocket).
+
+> **Trạng thái (2026-05+):** Test app dùng tích cực trong dev workflow. KHÔNG legacy.
+> Production modules (`t4_sequential_auto_input` v1.2 + `t4_passivehid_bridge` v4.0.1)
+> giao tiếp với simulator này qua WS port 9001 và Clipboard/SendKeys path.
 
 ## 🏗 Cấu trúc Dự án
-Dự án được chia làm 2 thành phần độc lập nhưng giao tiếp phối hợp qua Localhost:
-1. **[Csharp_BarcodeSimulator](https://github.com/T4TEK-DEV/Csharp_BarcodeSimulator)**: Dịch vụ nền chạy ở Local PC, giao tiếp vật lý thiết bị (giả lập), cung cấp 2 phương thức trả dữ liệu.
-2. **[test_barcode_service](https://github.com/T4TEK-DEV/test_barcode_service)**: Module Odoo chứa Client hứng dữ liệu, đồng bộ Time-out và xử lý màn hình hiển thị.
+
+2 C# project trong solution `BarcodeSimulator.sln` (.NET 8 WinForms + Fleck v1.2.0):
+
+1. **`KeyboardEmulator/`** (Class Library): `DeviceIntegrationManager.cs` — Fleck WebSocket server
+   trên `ws://0.0.0.0:9001`, HID injection (SendKeys + Clipboard batch), uppercase + dedup
+   convention (passive device).
+2. **`ScannerApp/`** (WinForms WinExe): `Program.cs` (`[STAThread]` bắt buộc cho Clipboard),
+   `Form1.cs` (UI 424×480, 5 RFID default), `ActiveDeviceSimulator.cs` (preserve case
+   — active scanner convention).
+
+**Production Odoo modules giao tiếp với app này:**
+- `addons/t4_sequential_auto_input/` — nhận barcode keystroke (active scanner path)
+- `addons/t4_passivehid_bridge/` — gửi WS commands (`READ_RFID_KEYBOARD`, `READ_RFID`,
+  `STOP_RFID_KEYBOARD`), nhận data trở lại qua Clipboard paste hoặc WS broadcast
+
+Cùng nằm trong monorepo `addons/` — không còn là repo GitHub riêng.
 
 ---
 
